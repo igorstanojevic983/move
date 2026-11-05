@@ -517,6 +517,105 @@ public class MainActivity extends Activity {
         cursor.setPressed2(false);
         sendTouch(MotionEvent.ACTION_UP);
         showCursor();
+        // Ako je kliknuto na polje za tekst – otvori naš prozor sa tastaturom
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                checkTextField(false);
+            }
+        }, 350);
+    }
+
+    // ---------------------------------------------------------------- unos teksta
+
+    private static final String JS_FIND_FIELD =
+            "(function(){var e=document.activeElement;"
+            + "try{while(e&&e.shadowRoot&&e.shadowRoot.activeElement)e=e.shadowRoot.activeElement;}catch(x){}"
+            + "if(!e)return null;var t=(e.tagName||'').toLowerCase();"
+            + "var ok=t==='textarea'||e.isContentEditable||(t==='input'&&!/^(button|submit|checkbox|radio|range|color|file|image|reset|hidden)$/i.test(e.type||''));"
+            + "if(!ok)return null;window.__wtvEl=e;"
+            + "var lab='';try{if(e.labels&&e.labels.length)lab=e.labels[0].innerText;}catch(x){}"
+            + "return JSON.stringify({type:(e.type||'text').toLowerCase(),value:e.isContentEditable?e.innerText:(e.value||''),"
+            + "label:lab||e.placeholder||e.getAttribute('aria-label')||e.name||''});})()";
+
+    private boolean textDialogOpen;
+
+    private void checkTextField(final boolean fromMenu) {
+        if (textDialogOpen || customView != null) return;
+        web.evaluateJavascript(JS_FIND_FIELD, new android.webkit.ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String result) {
+                try {
+                    if (result == null || "null".equals(result)) {
+                        if (fromMenu) toast("Prvo kliknite (OK) na polje u koje želite da kucate.");
+                        return;
+                    }
+                    String json = new org.json.JSONArray("[" + result + "]").getString(0);
+                    org.json.JSONObject o = new org.json.JSONObject(json);
+                    showTextDialog(o.optString("type"), o.optString("value"), o.optString("label"));
+                } catch (Exception ex) {
+                    if (fromMenu) toast("Polje nije pronađeno.");
+                }
+            }
+        });
+    }
+
+    private void showTextDialog(String type, String value, String label) {
+        textDialogOpen = true;
+        boolean password = "password".equals(type);
+        final EditText input = new EditText(this);
+        int it = InputType.TYPE_CLASS_TEXT;
+        if (password) it |= InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
+        else if ("email".equals(type)) it |= InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+        else if ("number".equals(type) || "tel".equals(type)) it = InputType.TYPE_CLASS_NUMBER;
+        else if ("url".equals(type)) it |= InputType.TYPE_TEXT_VARIATION_URI;
+        input.setInputType(it);
+        input.setSingleLine(true);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        input.setText(value);
+        input.setSelection(input.getText().length());
+
+        String title = password ? "Lozinka" : (label == null || label.trim().isEmpty() ? "Unesite tekst" : label.trim());
+        final AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(input)
+                .setPositiveButton("Upiši", (d, w) -> setFieldValue(input.getText().toString(), false))
+                .setNeutralButton("Upiši + Enter", (d, w) -> setFieldValue(input.getText().toString(), true))
+                .setNegativeButton("Otkaži", null)
+                .create();
+        dlg.setOnDismissListener(d -> {
+            textDialogOpen = false;
+            web.requestFocus();
+            hideSystemUi();
+        });
+        input.setOnEditorActionListener((v, actionId, ev) -> {
+            setFieldValue(input.getText().toString(), false);
+            dlg.dismiss();
+            return true;
+        });
+        if (dlg.getWindow() != null) {
+            dlg.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        }
+        dlg.show();
+        input.requestFocus();
+        input.postDelayed(() -> {
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_FORCED);
+        }, 200);
+    }
+
+    private void setFieldValue(String text, boolean pressEnter) {
+        String js = "(function(v,enter){var e=window.__wtvEl;if(!e)return;try{e.focus();}catch(x){}"
+                + "if(e.isContentEditable){e.innerText=v;}else{"
+                + "var p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+                + "var d=Object.getOwnPropertyDescriptor(p,'value');if(d&&d.set)d.set.call(e,v);else e.value=v;}"
+                + "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));"
+                + "if(enter){['keydown','keypress','keyup'].forEach(function(n){e.dispatchEvent(new KeyboardEvent(n,"
+                + "{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));});"
+                + "if(e.form){if(e.form.requestSubmit)e.form.requestSubmit();else e.form.submit();}}"
+                + "})(" + org.json.JSONObject.quote(text) + "," + pressEnter + ");";
+        web.evaluateJavascript(js, null);
     }
 
     private void sendTouch(int action) {
@@ -590,6 +689,7 @@ public class MainActivity extends Activity {
     private void showMenu() {
         final boolean auto = prefs.getBoolean(KEY_AUTOSTART, false);
         String[] items = {
+                "Ukucaj tekst u izabrano polje",
                 "Osveži stranicu",
                 "Početna stranica",
                 "Uvećaj prikaz (+10%)  — sada " + zoom() + "%",
@@ -604,18 +704,19 @@ public class MainActivity extends Activity {
                 .setTitle("Meni")
                 .setItems(items, (d, which) -> {
                     switch (which) {
-                        case 0: web.reload(); break;
-                        case 1: web.loadUrl(homeUrl()); break;
-                        case 2: setZoom(zoom() + 10); break;
-                        case 3: setZoom(zoom() - 10); break;
-                        case 4: showSpeed(); break;
-                        case 5:
+                        case 0: checkTextField(true); break;
+                        case 1: web.reload(); break;
+                        case 2: web.loadUrl(homeUrl()); break;
+                        case 3: setZoom(zoom() + 10); break;
+                        case 4: setZoom(zoom() - 10); break;
+                        case 5: showSpeed(); break;
+                        case 6:
                             prefs.edit().putBoolean(KEY_AUTOSTART, !auto).apply();
                             toast("Pokretanje pri uključenju: " + (!auto ? "DA" : "NE"));
                             break;
-                        case 6: showUrlDialog(); break;
-                        case 7: clearData(); break;
-                        case 8: finish(); break;
+                        case 7: showUrlDialog(); break;
+                        case 8: clearData(); break;
+                        case 9: finish(); break;
                     }
                 })
                 .show();
