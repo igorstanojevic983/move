@@ -39,6 +39,12 @@ public class MainActivity extends Activity {
     private static final String KEY_URL = "url";
     private static final String KEY_ZOOM = "zoom";
     private static final String KEY_SPEED = "speed";
+    private static final String KEY_USER = "login_user";
+    private static final String KEY_PASS = "login_pass";
+
+    /** Podrazumevani podaci za prijavu (mogu se promeniti u meniju). */
+    private static final String DEFAULT_USER = "irena.stanojevic";
+    private static final String DEFAULT_PASS = "Benevreci123";
 
     private static final String DEFAULT_URL = "https://play.move.tv/";
     /** Desktop Chrome na Windows-u – sajt misli da je u pitanju računar. */
@@ -212,6 +218,7 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 applyZoom();
+                injectAutofill();
                 CookieManager.getInstance().flush();
             }
 
@@ -322,6 +329,67 @@ public class MainActivity extends Activity {
 
     private int zoom() {
         return prefs.getInt(KEY_ZOOM, 100);
+    }
+
+    /**
+     * Svake 1,5 s proverava da li na stranici postoji prazno polje za lozinku;
+     * ako postoji, upisuje korisničko ime i lozinku (samo jednom po polju,
+     * pa korisnik može ručno da ih promeni).
+     */
+    private void injectAutofill() {
+        String u = prefs.getString(KEY_USER, DEFAULT_USER);
+        String pw = prefs.getString(KEY_PASS, DEFAULT_PASS);
+        if (u == null || u.isEmpty()) return;
+        String js = "(function(U,P){if(window.__wtvAF)clearInterval(window.__wtvAF);"
+                + "function setv(e,v){var pr=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;"
+                + "var d=Object.getOwnPropertyDescriptor(pr,'value');if(d&&d.set)d.set.call(e,v);else e.value=v;"
+                + "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));"
+                + "e.dispatchEvent(new Event('blur',{bubbles:true}));}"
+                + "function vis(e){return e&&e.offsetParent!==null&&!e.disabled;}"
+                + "function run(){var ps=document.querySelectorAll('input[type=password]');"
+                + "for(var i=0;i<ps.length;i++){var p=ps[i];if(!vis(p)||p.dataset.wtvFilled)continue;"
+                + "var scope=p.form||document;var all=scope.querySelectorAll('input');var user=null;"
+                + "for(var j=0;j<all.length;j++){var a=all[j];if(a===p)break;"
+                + "var t=(a.type||'text').toLowerCase();if((t==='text'||t==='email'||t==='tel')&&vis(a))user=a;}"
+                + "if(user&&!user.dataset.wtvFilled&&!user.value){setv(user,U);}if(user)user.dataset.wtvFilled='1';"
+                + "if(!p.value&&P)setv(p,P);p.dataset.wtvFilled='1';}}"
+                + "run();window.__wtvAF=setInterval(run,1500);})("
+                + org.json.JSONObject.quote(u) + "," + org.json.JSONObject.quote(pw) + ");";
+        web.evaluateJavascript(js, null);
+    }
+
+    private void showLoginDialog() {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad / 2, pad, 0);
+        final EditText user = new EditText(this);
+        user.setHint("Korisničko ime");
+        user.setSingleLine(true);
+        user.setText(prefs.getString(KEY_USER, DEFAULT_USER));
+        final EditText pass = new EditText(this);
+        pass.setHint("Lozinka");
+        pass.setSingleLine(true);
+        pass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+        pass.setText(prefs.getString(KEY_PASS, DEFAULT_PASS));
+        box.addView(user);
+        box.addView(pass);
+        new AlertDialog.Builder(this)
+                .setTitle("Podaci za automatsku prijavu")
+                .setView(box)
+                .setPositiveButton("Sačuvaj", (d, w) -> {
+                    prefs.edit().putString(KEY_USER, user.getText().toString().trim())
+                            .putString(KEY_PASS, pass.getText().toString()).apply();
+                    toast("Sačuvano.");
+                    injectAutofill();
+                })
+                .setNeutralButton("Isključi", (d, w) -> {
+                    prefs.edit().putString(KEY_USER, "").putString(KEY_PASS, "").apply();
+                    web.evaluateJavascript("if(window.__wtvAF)clearInterval(window.__wtvAF);", null);
+                    toast("Automatska prijava isključena.");
+                })
+                .setNegativeButton("Otkaži", null)
+                .show();
     }
 
     private void applyZoom() {
@@ -690,6 +758,7 @@ public class MainActivity extends Activity {
         final boolean auto = prefs.getBoolean(KEY_AUTOSTART, false);
         String[] items = {
                 "Ukucaj tekst u izabrano polje",
+                "Podaci za prijavu (korisničko ime i lozinka)",
                 "Osveži stranicu",
                 "Početna stranica",
                 "Uvećaj prikaz (+10%)  — sada " + zoom() + "%",
@@ -705,18 +774,19 @@ public class MainActivity extends Activity {
                 .setItems(items, (d, which) -> {
                     switch (which) {
                         case 0: checkTextField(true); break;
-                        case 1: web.reload(); break;
-                        case 2: web.loadUrl(homeUrl()); break;
-                        case 3: setZoom(zoom() + 10); break;
-                        case 4: setZoom(zoom() - 10); break;
-                        case 5: showSpeed(); break;
-                        case 6:
+                        case 1: showLoginDialog(); break;
+                        case 2: web.reload(); break;
+                        case 3: web.loadUrl(homeUrl()); break;
+                        case 4: setZoom(zoom() + 10); break;
+                        case 5: setZoom(zoom() - 10); break;
+                        case 6: showSpeed(); break;
+                        case 7:
                             prefs.edit().putBoolean(KEY_AUTOSTART, !auto).apply();
                             toast("Pokretanje pri uključenju: " + (!auto ? "DA" : "NE"));
                             break;
-                        case 7: showUrlDialog(); break;
-                        case 8: clearData(); break;
-                        case 9: finish(); break;
+                        case 8: showUrlDialog(); break;
+                        case 9: clearData(); break;
+                        case 10: finish(); break;
                     }
                 })
                 .show();
