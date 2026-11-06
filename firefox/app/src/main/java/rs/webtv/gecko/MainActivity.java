@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private static final String KEY_MOBILE = "mobile_mode";
     private static final String KEY_USER = "login_user";
     private static final String KEY_PASS = "login_pass";
+    private static final String KEY_ECO = "eco_mode";
 
     private static final String DEFAULT_URL = "https://play.move.tv/";
     private static final String DEFAULT_USER = "irena.stanojevic";
@@ -85,10 +86,12 @@ public class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         if (sRuntime == null) {
-            GeckoRuntimeSettings settings = new GeckoRuntimeSettings.Builder()
+            GeckoRuntimeSettings.Builder b = new GeckoRuntimeSettings.Builder()
                     .javaScriptEnabled(true)
-                    .consoleOutput(true)
-                    .build();
+                    .consoleOutput(true);
+            String cfg = writeConfig(prefs.getBoolean(KEY_ECO, true));
+            if (cfg != null) b.configFilePath(cfg);
+            GeckoRuntimeSettings settings = b.build();
             sRuntime = GeckoRuntime.create(getApplicationContext(), settings);
         }
 
@@ -122,6 +125,55 @@ public class MainActivity extends Activity {
             scheduleHide();
         });
         geckoView.requestFocus();
+    }
+
+    /**
+     * Režim štednje: Gecko podešavanja za slabije uređaje (manje memorije,
+     * bez posebnog grafičkog procesa, ređe osvežavanje animacija stranice).
+     * Video se i dalje dekodira hardverski i prikazuje punim kvalitetom.
+     */
+    private String writeConfig(boolean eco) {
+        java.io.File f = new java.io.File(getFilesDir(), "geckoview-config.yaml");
+        if (!eco) {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+            return null;
+        }
+        String yaml = "prefs:\n"
+                + "  layers.gpu-process.enabled: false\n"
+                + "  layout.frame_rate: 30\n"
+                + "  ui.prefersReducedMotion: 1\n"
+                + "  dom.ipc.processPrelaunch.enabled: false\n"
+                + "  dom.ipc.processCount: 1\n"
+                + "  browser.cache.memory.capacity: 16384\n"
+                + "  browser.sessionhistory.max_total_viewers: 0\n"
+                + "  image.mem.surfacecache.max_size_kb: 51200\n"
+                + "  media.hardware-video-decoding.enabled: true\n";
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) {
+            out.write(yaml.getBytes("UTF-8"));
+            return f.getAbsolutePath();
+        } catch (Exception e) {
+            Log.e(TAG, "config write failed", e);
+            return null;
+        }
+    }
+
+    private void toggleEco() {
+        boolean eco = !prefs.getBoolean(KEY_ECO, true);
+        prefs.edit().putBoolean(KEY_ECO, eco).commit();
+        toast("Režim štednje: " + (eco ? "UKLJUČEN" : "ISKLJUČEN") + " – aplikacija se ponovo pokreće…");
+        handler.postDelayed(this::restartApp, 1500);
+    }
+
+    private void restartApp() {
+        android.content.Intent i = new android.content.Intent(this, MainActivity.class);
+        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 1, i,
+                android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_CANCEL_CURRENT);
+        android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+        if (am != null) am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 800, pi);
+        finishAffinity();
+        System.exit(0);
     }
 
     private GeckoSessionSettings buildSettings() {
@@ -575,7 +627,9 @@ public class MainActivity extends Activity {
     private void showMenu() {
         final boolean auto = prefs.getBoolean(KEY_AUTOSTART, false);
         final boolean mobile = prefs.getBoolean(KEY_MOBILE, false);
+        final boolean eco = prefs.getBoolean(KEY_ECO, true);
         String[] items = {
+                "Režim štednje: " + (eco ? "UKLJUČEN" : "ISKLJUČEN") + " (promeni – ponovo pokreće aplikaciju)",
                 "Ukucaj tekst u izabrano polje",
                 "Podaci za prijavu (korisničko ime i lozinka)",
                 "Režim prikaza: " + (mobile ? "MOBILNI TELEFON" : "DESKTOP RAČUNAR") + " (promeni)",
@@ -593,21 +647,22 @@ public class MainActivity extends Activity {
                 .setTitle("Meni")
                 .setItems(items, (d, which) -> {
                     switch (which) {
-                        case 0: showTypeDialog(); break;
-                        case 1: showLoginDialog(); break;
-                        case 2: toggleMobile(); break;
-                        case 3: session.reload(); break;
-                        case 4: session.loadUri(homeUrl()); break;
-                        case 5: setZoom(zoom() + 10); break;
-                        case 6: setZoom(zoom() - 10); break;
-                        case 7: showSpeed(); break;
-                        case 8:
+                        case 0: toggleEco(); break;
+                        case 1: showTypeDialog(); break;
+                        case 2: showLoginDialog(); break;
+                        case 3: toggleMobile(); break;
+                        case 4: session.reload(); break;
+                        case 5: session.loadUri(homeUrl()); break;
+                        case 6: setZoom(zoom() + 10); break;
+                        case 7: setZoom(zoom() - 10); break;
+                        case 8: showSpeed(); break;
+                        case 9:
                             prefs.edit().putBoolean(KEY_AUTOSTART, !auto).apply();
                             toast("Pokretanje pri uključenju: " + (!auto ? "DA" : "NE"));
                             break;
-                        case 9: showUrlDialog(); break;
-                        case 10: clearData(); break;
-                        case 11: finish(); break;
+                        case 10: showUrlDialog(); break;
+                        case 11: clearData(); break;
+                        case 12: finish(); break;
                     }
                 })
                 .show();

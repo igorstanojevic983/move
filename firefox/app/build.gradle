@@ -32,6 +32,8 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            // potrebno da GeckoView čita podešavanja režima štednje
+            debuggable true
             signingConfig signingConfigs.release
         }
     }
