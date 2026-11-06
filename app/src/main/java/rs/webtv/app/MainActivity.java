@@ -39,6 +39,10 @@ public class MainActivity extends Activity {
     private static final String KEY_URL = "url";
     private static final String KEY_ZOOM = "zoom";
     private static final String KEY_SPEED = "speed";
+    private static final String KEY_MOBILE = "mobile_mode";
+    private static final String MOBILE_UA =
+            "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 "
+                    + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
     private static final String KEY_USER = "login_user";
     private static final String KEY_PASS = "login_pass";
 
@@ -174,7 +178,7 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setUserAgentString(DESKTOP_UA);
+        s.setUserAgentString(prefs.getBoolean(KEY_MOBILE, false) ? MOBILE_UA : DESKTOP_UA);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
         s.setSupportZoom(true);
@@ -356,6 +360,15 @@ public class MainActivity extends Activity {
                 + "run();window.__wtvAF=setInterval(run,1500);})("
                 + org.json.JSONObject.quote(u) + "," + org.json.JSONObject.quote(pw) + ");";
         web.evaluateJavascript(js, null);
+    }
+
+    private void toggleMobile() {
+        boolean m = !prefs.getBoolean(KEY_MOBILE, false);
+        prefs.edit().putBoolean(KEY_MOBILE, m).apply();
+        web.getSettings().setUserAgentString(m ? MOBILE_UA : DESKTOP_UA);
+        web.clearCache(false);
+        web.loadUrl(homeUrl());
+        toast("Režim prikaza: " + (m ? "mobilni telefon" : "desktop računar"));
     }
 
     private void showLoginDialog() {
@@ -759,6 +772,7 @@ public class MainActivity extends Activity {
         String[] items = {
                 "Ukucaj tekst u izabrano polje",
                 "Podaci za prijavu (korisničko ime i lozinka)",
+                "Režim prikaza: " + (prefs.getBoolean(KEY_MOBILE, false) ? "MOBILNI TELEFON" : "DESKTOP RAČUNAR") + " (promeni)",
                 "Osveži stranicu",
                 "Početna stranica",
                 "Uvećaj prikaz (+10%)  — sada " + zoom() + "%",
@@ -775,18 +789,19 @@ public class MainActivity extends Activity {
                     switch (which) {
                         case 0: checkTextField(true); break;
                         case 1: showLoginDialog(); break;
-                        case 2: web.reload(); break;
-                        case 3: web.loadUrl(homeUrl()); break;
-                        case 4: setZoom(zoom() + 10); break;
-                        case 5: setZoom(zoom() - 10); break;
-                        case 6: showSpeed(); break;
-                        case 7:
+                        case 2: toggleMobile(); break;
+                        case 3: web.reload(); break;
+                        case 4: web.loadUrl(homeUrl()); break;
+                        case 5: setZoom(zoom() + 10); break;
+                        case 6: setZoom(zoom() - 10); break;
+                        case 7: showSpeed(); break;
+                        case 8:
                             prefs.edit().putBoolean(KEY_AUTOSTART, !auto).apply();
                             toast("Pokretanje pri uključenju: " + (!auto ? "DA" : "NE"));
                             break;
-                        case 8: showUrlDialog(); break;
-                        case 9: clearData(); break;
-                        case 10: finish(); break;
+                        case 9: showUrlDialog(); break;
+                        case 10: clearData(); break;
+                        case 11: finish(); break;
                     }
                 })
                 .show();
