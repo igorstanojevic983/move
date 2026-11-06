@@ -21,23 +21,31 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.13'
 
-      - name: Build
-        run: gradle assembleRelease --no-daemon --stacktrace
+      - name: Build WebView verzija
+        run: |
+          gradle -p . assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk MoveTV.apk
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk MoveTV.apk
+      - name: Build Firefox (GeckoView) verzija
+        run: |
+          gradle -p firefox assembleRelease --no-daemon --stacktrace
+          cp firefox/app/build/outputs/apk/release/app-release.apk MoveTV-Firefox.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: MoveTV-apk
-          path: MoveTV.apk
+          path: |
+            MoveTV.apk
+            MoveTV-Firefox.apk
 
       - name: Publish release (latest)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: MoveTV – najnovija verzija
-          files: MoveTV.apk
+          files: |
+            MoveTV.apk
+            MoveTV-Firefox.apk
           make_latest: true
