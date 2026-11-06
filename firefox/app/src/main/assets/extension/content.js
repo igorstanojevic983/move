@@ -15,8 +15,11 @@
     if (!m || !m.type) return;
     if (m.type === "init") {
       creds = m.user ? { u: m.user, p: m.pass || "" } : null;
+      setFx(m.noFx);
       setZoom(m.zoom);
       fill();
+    } else if (m.type === "fx") {
+      setFx(m.noFx);
     } else if (m.type === "zoom") {
       setZoom(m.zoom);
     } else if (m.type === "video") {
@@ -25,6 +28,25 @@
       typeText(m.text, m.enter);
     }
   });
+
+  // Gašenje efekata stranice (animacije, prelazi, zamućenja, senke)
+  var FX_CSS =
+    "*,*::before,*::after{animation:none!important;transition:none!important;" +
+    "backdrop-filter:none!important;filter:none!important;box-shadow:none!important;" +
+    "text-shadow:none!important;scroll-behavior:auto!important;will-change:auto!important;}";
+  function setFx(off) {
+    var el = document.getElementById("wtv-nofx");
+    if (off) {
+      if (!el) {
+        el = document.createElement("style");
+        el.id = "wtv-nofx";
+        el.textContent = FX_CSS;
+        (document.head || document.documentElement).appendChild(el);
+      }
+    } else if (el) {
+      el.remove();
+    }
+  }
 
   function setZoom(z) {
     if (!isTop || !z) return;

@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private static final String KEY_USER = "login_user";
     private static final String KEY_PASS = "login_pass";
     private static final String KEY_ECO = "eco_mode";
+    private static final String KEY_NOFX = "no_effects";
 
     private static final String DEFAULT_URL = "https://play.move.tv/";
     private static final String DEFAULT_USER = "irena.stanojevic";
@@ -358,6 +359,7 @@ public class MainActivity extends Activity {
                     init.put("user", prefs.getString(KEY_USER, DEFAULT_USER));
                     init.put("pass", prefs.getString(KEY_PASS, DEFAULT_PASS));
                     init.put("zoom", zoom());
+                    init.put("noFx", prefs.getBoolean(KEY_NOFX, true));
                     port.postMessage(init);
                 } catch (Exception ex) {
                     Log.e(TAG, "init message", ex);
@@ -628,7 +630,9 @@ public class MainActivity extends Activity {
         final boolean auto = prefs.getBoolean(KEY_AUTOSTART, false);
         final boolean mobile = prefs.getBoolean(KEY_MOBILE, false);
         final boolean eco = prefs.getBoolean(KEY_ECO, true);
+        final boolean noFx = prefs.getBoolean(KEY_NOFX, true);
         String[] items = {
+                "Efekti stranice: " + (noFx ? "UGAŠENI" : "UKLJUČENI") + " (promeni)",
                 "Režim štednje: " + (eco ? "UKLJUČEN" : "ISKLJUČEN") + " (promeni – ponovo pokreće aplikaciju)",
                 "Ukucaj tekst u izabrano polje",
                 "Podaci za prijavu (korisničko ime i lozinka)",
@@ -647,22 +651,33 @@ public class MainActivity extends Activity {
                 .setTitle("Meni")
                 .setItems(items, (d, which) -> {
                     switch (which) {
-                        case 0: toggleEco(); break;
-                        case 1: showTypeDialog(); break;
-                        case 2: showLoginDialog(); break;
-                        case 3: toggleMobile(); break;
-                        case 4: session.reload(); break;
-                        case 5: session.loadUri(homeUrl()); break;
-                        case 6: setZoom(zoom() + 10); break;
-                        case 7: setZoom(zoom() - 10); break;
-                        case 8: showSpeed(); break;
-                        case 9:
+                        case 0:
+                            prefs.edit().putBoolean(KEY_NOFX, !noFx).apply();
+                            try {
+                                JSONObject o = new JSONObject();
+                                o.put("type", "fx");
+                                o.put("noFx", !noFx);
+                                broadcast(o);
+                            } catch (Exception ignored) {
+                            }
+                            toast("Efekti stranice: " + (!noFx ? "UGAŠENI" : "UKLJUČENI"));
+                            break;
+                        case 1: toggleEco(); break;
+                        case 2: showTypeDialog(); break;
+                        case 3: showLoginDialog(); break;
+                        case 4: toggleMobile(); break;
+                        case 5: session.reload(); break;
+                        case 6: session.loadUri(homeUrl()); break;
+                        case 7: setZoom(zoom() + 10); break;
+                        case 8: setZoom(zoom() - 10); break;
+                        case 9: showSpeed(); break;
+                        case 10:
                             prefs.edit().putBoolean(KEY_AUTOSTART, !auto).apply();
                             toast("Pokretanje pri uključenju: " + (!auto ? "DA" : "NE"));
                             break;
-                        case 10: showUrlDialog(); break;
-                        case 11: clearData(); break;
-                        case 12: finish(); break;
+                        case 11: showUrlDialog(); break;
+                        case 12: clearData(); break;
+                        case 13: finish(); break;
                     }
                 })
                 .show();
